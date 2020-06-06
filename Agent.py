@@ -3,6 +3,8 @@ import pandas as pd
 import time
 from Game import Game
 from helpers_2048 import *
+import torch
+from DQN import *
 
 class Agent (object):
     def __init__(self, sleep_time=.05, headless=False, printmode=False):
@@ -11,7 +13,8 @@ class Agent (object):
             "random": self.random_policy,
             "combination": self.combination_policy,
             "bigger_combo": self.priority_bigger_policy,
-            "designed": self.designed_policy
+            "designed": self.designed_policy,
+            "pretrained": self.pretrained_policy
         }
         self.sleep_time = sleep_time
         self.headless = headless
@@ -103,6 +106,39 @@ class Agent (object):
         }
         
         return df_overall, statistics
+    
+    # Pretrained policy using experiences collected from random moves
+    def pretrained_policy(self, game):
+        move_ops = ['Left', 'Right', 'Up', 'Down']
+        start_time = time.time()
+        continue_playing = True
+        cur_state = game.initial_state
+        
+        policy_network = DQN(4,4,4)
+        policy_network.load_state_dict(torch.load('trained_model.pt'))
+        policy_network.eval()
+        
+        while not isinstance(continue_playing, str):
+            network_out = policy_network(process_state(cur_state))
+            ranked_actions = np.argsort(network_out.data.numpy()[0])
+            chosen_action = ranked_actions[0]
+            chosen_move = move_ops[chosen_action]
+            
+            while not isvalid(cur_state, chosen_move):
+                ranked_actions = ranked_actions[ranked_actions != chosen_action]
+                if len(ranked_actions) == 0:
+                    continue_playing = "Invalid";
+                    break;
+                chosen_action = ranked_actions[0]
+                chosen_move = move_ops[chosen_action]
+                
+            if not isinstance(continue_playing, str):
+                continue_playing, cur_state = game.move(chosen_move)
+
+        end_time = time.time()
+        game.calculate_results(end_time - start_time)
+        
+        return game
     
     # Designed policy
     def designed_policy(self, game):
